@@ -235,7 +235,7 @@ func SaveClient(key string, value string) {
 }
 
 func main() {
-	gin.SetMode(gin.DebugMode)
+	//gin.SetMode(gin.DebugMode)
 	router := gin.Default()
 	router.GET("/", index)
 	router.POST("/upload", uploadData)

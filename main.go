@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -12,8 +13,6 @@ import (
 	"os/exec"
 
 	"regexp"
-
-	"crypto/md5"
 
 	"strconv"
 
@@ -79,10 +78,11 @@ type dataJSON struct {
 }
 
 type dataValue struct {
-	data string
+	data     string `json: "data"`
+	deviceId string `json: "deviceId"`
 }
 
-func copyOutput(r io.Reader) {
+func copyOutput(r io.Reader, metaData map[string]interface{}) {
 	scanner := bufio.NewScanner(r)
 	var data string
 	for scanner.Scan() {
@@ -103,20 +103,21 @@ func copyOutput(r io.Reader) {
 	// fmt.Println(match)
 	pop, _ := regexp.Compile(`\{.*?\}`)
 	result := pop.FindString(data)
-	fmt.Println(pop.FindString(data))
+	result1 := strings.Trim(result, " ")
+	fmt.Println(result1)
 
 	fmt.Println("End data: ", data)
-
-	hash := md5.New()
-	hash.Write([]byte(data))
 	//string(hash.Sum([]byte(data)))
+
+	var saveData = dataValue{data: result1, deviceId: fmt.Sprintf("%v", metaData["dev_eui"])}
+	fmt.Println(saveData)
 
 	var currentIndex = retreiveData("index")
 	indexInt, _ := strconv.Atoi(currentIndex)
 	var index = indexInt + 1
 	SaveClient("index", strconv.Itoa(index))
 	var indexString = "key" + strconv.Itoa(index)
-	SaveClient(indexString, result)
+	SaveClient(indexString, fmt.Sprintf("%v", saveData))
 	// r, _ := regexp.Compile("p([a-z]+)ch")
 	// fmt.Println(r.FindString("peach punch"))
 	//return data
@@ -128,9 +129,9 @@ func uploadData(c *gin.Context) {
 	//json.Unmarshal([]byte(c.Request.Body), &data)
 	//var responseData dataJSON
 
-	// dec := json.NewDecoder(c.Request.Body)
-	// fmt.Println(dec)
-	// err := dec.Decode(&responseData)
+	//dec := json.NewDecoder(c.Request.Body)
+	//fmt.Println(dec)
+	//err := dec.Decode(&responseData)
 
 	// if err != nil {
 	// 	log.Println(err)
@@ -169,15 +170,55 @@ func uploadData(c *gin.Context) {
 	}
 
 	if stdout != nil {
-		go copyOutput(stdout)
+		go copyOutput(stdout, data) // fix this function
 	} else {
-		go copyOutput(stderr)
+		go copyOutput(stderr, data) // fix this function
 	}
 
 	cmd.Wait()
 
 	c.IndentedJSON(http.StatusOK, &data)
 
+}
+
+type queryMessage struct {
+	message []string `json: "message"`
+}
+
+func queryData(c *gin.Context) {
+	var querys = []string{}
+	//hasFirst := c.Request.URL.Query().Has("time")
+	paramPairs := c.Request.URL.Query()
+	//fmt.Println(time)
+	for key, values := range paramPairs {
+		if key == "time" {
+			data, err := strconv.Atoi(values[0])
+			indexId, _ := strconv.Atoi(retreiveData("index"))
+			if err != nil {
+				panic(err)
+			}
+			if data > 90 {
+				//fmt.Println("data did not send")
+				//var message = errorMessage{errorMessage: "can't return that much data"}
+				//message = {"error": "can't return that much data"}
+				//message.message = "can't return that much data"
+				c.IndentedJSON(http.StatusNotFound, gin.H{"error": "can't return that much data"})
+			} else if data > indexId {
+				c.IndentedJSON(http.StatusNotFound, gin.H{"error": "requesting more data then available"})
+			} else {
+				for i := 0; i < data; i++ {
+					var indexString = "key" + strconv.Itoa(i)
+					var result = retreiveData(indexString)
+					//fmt.Println(result)
+
+					querys = append(querys, result)
+
+				}
+				c.IndentedJSON(http.StatusOK, gin.H{"message": querys})
+			}
+		}
+		//fmt.Printf("key = %v, value(s) = %v\n", key, values)
+	}
 }
 
 var ctx = context.Background()
@@ -239,6 +280,7 @@ func main() {
 	router := gin.Default()
 	router.GET("/", index)
 	router.POST("/upload", uploadData)
+	router.GET("/data", queryData)
 
 	router.Run("localhost:8000")
 }

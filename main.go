@@ -24,6 +24,8 @@ import (
 
 	"log"
 	"time"
+
+	"encoding/json"
 )
 
 type dataStruct struct {
@@ -77,9 +79,9 @@ type dataJSON struct {
 	decoded string `json:"decoded"`
 }
 
-type dataValue struct {
-	data     string `json: "data"`
-	deviceId string `json: "deviceId"`
+type DataValue struct {
+	Data     string `json: "data"`
+	DeviceId string `json: "deviceId"`
 }
 
 func copyOutput(r io.Reader, metaData map[string]interface{}) {
@@ -97,7 +99,9 @@ func copyOutput(r io.Reader, metaData map[string]interface{}) {
 		// fmt.Println(match)
 		// r, _ := regexp.Compile("p([a-z]+)ch")
 		// fmt.Println(r.FindString("peach punch"))
-		data += scanner.Text()
+		if data != " " {
+			data += scanner.Text()
+		}
 	}
 	// match, _ := regexp.MatchString("p([a-z]+)ch", "peach")
 	// fmt.Println(match)
@@ -109,15 +113,19 @@ func copyOutput(r io.Reader, metaData map[string]interface{}) {
 	fmt.Println("End data: ", data)
 	//string(hash.Sum([]byte(data)))
 
-	var saveData = dataValue{data: result1, deviceId: fmt.Sprintf("%v", metaData["dev_eui"])}
-	fmt.Println(saveData)
+	encodedSaveData, err := json.Marshal(&DataValue{Data: result1, DeviceId: fmt.Sprintf("%v", metaData["dev_eui"])})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(encodedSaveData)
 
 	var currentIndex = retreiveData("index")
 	indexInt, _ := strconv.Atoi(currentIndex)
 	var index = indexInt + 1
 	SaveClient("index", strconv.Itoa(index))
 	var indexString = "key" + strconv.Itoa(index)
-	SaveClient(indexString, fmt.Sprintf("%v", saveData))
+	SaveClient(indexString, string(encodedSaveData))
 	// r, _ := regexp.Compile("p([a-z]+)ch")
 	// fmt.Println(r.FindString("peach punch"))
 	//return data
@@ -206,7 +214,7 @@ func queryData(c *gin.Context) {
 			} else if data > indexId {
 				c.IndentedJSON(http.StatusNotFound, gin.H{"error": "requesting more data then available"})
 			} else {
-				for i := 0; i < data; i++ {
+				for i := 1; i <= data; i++ {
 					var indexString = "key" + strconv.Itoa(i)
 					var result = retreiveData(indexString)
 					//fmt.Println(result)
